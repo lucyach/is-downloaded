@@ -1,0 +1,12 @@
+{
+  "name": "is-downloaded",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "concurrently -n api,web -c yellow,cyan \"npm --prefix backend run dev\" \"npm --prefix frontend run dev\"",
+    "dev:docker": "docker compose up --build"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}

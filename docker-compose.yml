@@ -1,0 +1,26 @@
+services:
+  api:
+    build:
+      context: ./backend
+    container_name: is-downloaded-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/app:/app/app
+      - "${MUSIC_LIBRARY_HOST_PATH:-C:/Users/Public/Soulseek Downloads}:/music:ro"
+    environment:
+      - LASTFM_API_KEY=${LASTFM_API_KEY}
+      - LASTFM_BASE_URL=${LASTFM_BASE_URL:-https://ws.audioscrobbler.com/2.0/}
+      - MUSIC_LIBRARY_PATH=${MUSIC_LIBRARY_PATH:-/music}
+
+  web:
+    build:
+      context: ./frontend
+    container_name: is-downloaded-web
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - api

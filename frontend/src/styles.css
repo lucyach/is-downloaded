@@ -1,0 +1,74 @@
+:root {
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  color: #1f2937;
+  background: #f2f4f8;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+.page {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 2rem 1rem 3rem;
+}
+
+.controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.8rem;
+  margin-bottom: 1rem;
+}
+
+label {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 600;
+}
+
+input,
+button {
+  padding: 0.55rem 0.7rem;
+  border: 1px solid #c4cad7;
+  border-radius: 8px;
+}
+
+button {
+  cursor: pointer;
+  background: #0f766e;
+  color: #ffffff;
+  border: none;
+  align-self: end;
+}
+
+.results {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.results li {
+  border-radius: 10px;
+  padding: 0.75rem;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+}
+
+.results li.hit {
+  border-left: 5px solid #15803d;
+}
+
+.results li.miss {
+  border-left: 5px solid #b91c1c;
+}
+
+.error {
+  color: #b91c1c;
+  font-weight: 600;
+}
