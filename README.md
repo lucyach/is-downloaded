@@ -14,24 +14,6 @@ Basic full-stack outline for checking whether your most played Last.fm tracks ar
 - `backend/`: FastAPI app
 - `frontend/`: React app
 
-## What this outline already includes
-
-- API endpoint to fetch top tracks from Last.fm
-- API endpoint to check one track against local MP3 metadata
-- API endpoint to return top tracks with downloaded status
-- Basic React UI to input a Last.fm username and display results
-- Startup MP3 index cache to avoid rescanning for each query
-- Fuzzy matching for artist/title variations (feat/remix/punctuation)
-- Docker Compose setup and one-command root dev scripts
-
-## Next steps after scaffold
-
-1. Add your Last.fm API key to `backend/.env`.
-2. Set your local MP3 library path in `backend/.env`.
-3. Create a Python virtual environment and install backend dependencies.
-4. Install frontend dependencies and run Vite.
-5. Improve matching logic (fuzzy matching, cache index, and tests).
-
 ## Local development
 
 ### Backend
