@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 import httpx
@@ -12,9 +13,127 @@ class LastFMError(Exception):
 
 
 class LastFMClient:
+    _album_cache: dict[tuple[str, str], str] = {}
+
     def __init__(self, api_key: str, base_url: str) -> None:
         self.api_key = api_key
         self.base_url = base_url
+
+    @staticmethod
+    def _cache_key(artist: str, title: str) -> tuple[str, str]:
+        artist_key = " ".join(artist.strip().lower().split())
+        title_key = " ".join(title.strip().lower().split())
+        return artist_key, title_key
+
+    @staticmethod
+    def _extract_album_title(payload: dict[str, Any]) -> str:
+        track_info = payload.get("track", {})
+        if not isinstance(track_info, dict):
+            return ""
+
+        album_info = track_info.get("album", {})
+        if not isinstance(album_info, dict):
+            return ""
+
+        # Last.fm payloads can expose album text under different keys.
+        for key in ("title", "name", "#text"):
+            value = album_info.get(key, "")
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+
+        return ""
+
+    async def _get_track_album(
+        self,
+        client: httpx.AsyncClient,
+        artist: str,
+        title: str,
+        mbid: str,
+        semaphore: asyncio.Semaphore,
+    ) -> str:
+        cache_key = self._cache_key(artist, title)
+        if cache_key in self._album_cache:
+            return self._album_cache[cache_key]
+
+        params_list: list[dict[str, str]] = []
+        if mbid.strip():
+            params_list.append(
+                {
+                    "method": "track.getInfo",
+                    "mbid": mbid,
+                    "api_key": self.api_key,
+                    "format": "json",
+                    "autocorrect": "1",
+                }
+            )
+        params_list.append(
+            {
+                "method": "track.getInfo",
+                "artist": artist,
+                "track": title,
+                "api_key": self.api_key,
+                "format": "json",
+                "autocorrect": "1",
+            }
+        )
+
+        album_title = ""
+        async with semaphore:
+            try:
+                for params in params_list:
+                    response = await client.get(self.base_url, params=params)
+                    response.raise_for_status()
+                    payload = response.json()
+                    if not isinstance(payload, dict):
+                        continue
+                    if "error" in payload:
+                        continue
+                    album_title = self._extract_album_title(payload)
+                    if album_title:
+                        break
+            except Exception:
+                self._album_cache[cache_key] = ""
+                return ""
+
+        self._album_cache[cache_key] = album_title
+        return album_title
+
+    async def _enrich_albums(
+        self,
+        client: httpx.AsyncClient,
+        tracks: list[dict[str, Any]],
+    ) -> None:
+        semaphore = asyncio.Semaphore(8)
+        tasks: list[asyncio.Task[str]] = []
+        indexes: list[int] = []
+
+        for index, track in enumerate(tracks):
+            if track.get("album"):
+                continue
+            artist = str(track.get("artist", ""))
+            title = str(track.get("title", ""))
+            mbid = str(track.get("mbid", ""))
+            if not artist or not title:
+                continue
+            indexes.append(index)
+            tasks.append(
+                asyncio.create_task(
+                    self._get_track_album(
+                        client,
+                        artist=artist,
+                        title=title,
+                        mbid=mbid,
+                        semaphore=semaphore,
+                    )
+                )
+            )
+
+        if not tasks:
+            return
+
+        album_results = await asyncio.gather(*tasks)
+        for index, album in zip(indexes, album_results, strict=True):
+            tracks[index]["album"] = album
 
     async def get_top_tracks(self, user: str, limit: int = 25) -> list[dict[str, Any]]:
         params = {
@@ -61,14 +180,20 @@ class LastFMClient:
             artist = item.get("artist", {}).get("name", "")
             name = item.get("name", "")
             album = item.get("album", {}).get("name", "")
+            mbid = item.get("mbid", "")
             playcount = int(item.get("playcount", 0)) if str(item.get("playcount", "0")).isdigit() else 0
             normalized.append(
                 {
                     "artist": artist,
                     "title": name,
                     "album": album,
+                    "mbid": mbid,
                     "playcount": playcount,
                 }
             )
+
+        # user.getTopTracks usually does not include album, so enrich with track.getInfo.
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            await self._enrich_albums(client, normalized)
 
         return normalized
