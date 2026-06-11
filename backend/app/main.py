@@ -67,18 +67,19 @@ def health() -> dict[str, object]:
 @app.get("/api/top-tracks")
 async def get_top_tracks(
     user: str = Query(..., description="Last.fm username"),
-    limit: int = Query(25, ge=1, le=100),
+    limit: int = Query(50, ge=1, le=1000),
+    page: int = Query(1, ge=1),
 ) -> dict[str, object]:
     if not LASTFM_API_KEY:
         raise HTTPException(status_code=500, detail="LASTFM_API_KEY is not configured")
 
     try:
         client = LastFMClient(api_key=LASTFM_API_KEY, base_url=LASTFM_BASE_URL)
-        tracks = await client.get_top_tracks(user=user, limit=limit)
+        result = await client.get_top_tracks(user=user, limit=limit, page=page)
     except LastFMError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
-    return {"user": user, "tracks": tracks}
+    return {"user": user, **result}
 
 
 @app.post("/api/check-track", response_model=TrackStatus)
@@ -97,7 +98,8 @@ def check_track_downloaded(payload: TrackRequest) -> TrackStatus:
 @app.get("/api/check-top-tracks")
 async def check_top_tracks(
     user: str = Query(..., description="Last.fm username"),
-    limit: int = Query(25, ge=1, le=100),
+    limit: int = Query(50, ge=1, le=1000),
+    page: int = Query(1, ge=1),
     only_missing: bool = Query(True, description="Return only tracks not found in library"),
 ) -> dict[str, object]:
     if not LASTFM_API_KEY:
@@ -105,14 +107,14 @@ async def check_top_tracks(
 
     try:
         client = LastFMClient(api_key=LASTFM_API_KEY, base_url=LASTFM_BASE_URL)
-        tracks = await client.get_top_tracks(user=user, limit=limit)
+        result = await client.get_top_tracks(user=user, limit=limit, page=page)
     except LastFMError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
     track_index.refresh_if_path_changed(MUSIC_LIBRARY_PATH)
 
     results: list[TrackStatus] = []
-    for track in tracks:
+    for track in result["tracks"]:
         artist = track.get("artist", "")
         title = track.get("title", "")
         album = track.get("album", "")
@@ -136,6 +138,10 @@ async def check_top_tracks(
 
     return {
         "user": user,
+        "page": result["page"],
+        "total_pages": result["total_pages"],
+        "total_tracks": result["total_tracks"],
+        "per_page": result["per_page"],
         "total": len(results),
-        "results": [result.model_dump() for result in results],
+        "results": [r.model_dump() for r in results],
     }

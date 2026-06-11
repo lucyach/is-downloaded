@@ -1,7 +1,11 @@
 import type { CheckTopTracksResponse } from "./types";
 
-export async function fetchCheckedTopTracks(user: string, limit: number): Promise<CheckTopTracksResponse> {
-  const query = new URLSearchParams({ user, limit: String(limit), only_missing: "true" });
+export async function fetchCheckedTopTracks(
+  user: string,
+  limit: number,
+  page: number = 1,
+): Promise<CheckTopTracksResponse> {
+  const query = new URLSearchParams({ user, limit: String(limit), page: String(page), only_missing: "true" });
   const response = await fetch(`/api/check-top-tracks?${query.toString()}`);
 
   if (!response.ok) {

@@ -11,4 +11,8 @@ export type CheckTopTracksResponse = {
   user: string;
   total: number;
   results: CheckedTrack[];
+  page: number;
+  total_pages: number;
+  total_tracks: number;
+  per_page: number;
 };

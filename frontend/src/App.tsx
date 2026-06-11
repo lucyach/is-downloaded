@@ -4,25 +4,41 @@ import type { CheckedTrack } from "./types";
 
 export default function App() {
   const [user, setUser] = useState("");
-  const [limit, setLimit] = useState(25);
+  const [limit, setLimit] = useState(50);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tracks, setTracks] = useState<CheckedTrack[]>([]);
+  const [page, setPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalTracks, setTotalTracks] = useState(0);
 
-  async function onSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function loadPage(targetPage: number, append: boolean) {
     setLoading(true);
     setError(null);
 
     try {
-      const data = await fetchCheckedTopTracks(user, limit);
-      setTracks(data.results);
+      const data = await fetchCheckedTopTracks(user, limit, targetPage);
+      setTracks(append ? (prev) => [...prev, ...data.results] : data.results);
+      setPage(data.page);
+      setTotalPages(data.total_pages);
+      setTotalTracks(data.total_tracks);
     } catch (err) {
-      setTracks([]);
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
       setLoading(false);
     }
+  }
+
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setTracks([]);
+    setPage(0);
+    setTotalPages(0);
+    await loadPage(1, false);
+  }
+
+  async function onLoadMore() {
+    await loadPage(page + 1, true);
   }
 
   return (
@@ -37,11 +53,11 @@ export default function App() {
         </label>
 
         <label>
-          Track limit
+          Per page
           <input
             type="number"
             min={1}
-            max={100}
+            max={1000}
             value={limit}
             onChange={(e) => setLimit(Number(e.target.value))}
           />
@@ -54,11 +70,17 @@ export default function App() {
 
       {error && <p className="error">{error}</p>}
 
+      {totalTracks > 0 && (
+        <p>
+          Showing page {page} of {totalPages} ({totalTracks.toLocaleString()} total scrobbled tracks) — {tracks.length} missing shown
+        </p>
+      )}
+
       <section>
         <h2>Missing Tracks ({tracks.length})</h2>
         <ul className="results">
           {tracks.map((track) => (
-            <li key={`${track.artist}-${track.title}`} className="miss">
+            <li key={`${track.artist}-${track.title}-${track.playcount}`} className="miss">
               <div>
                 <strong>{track.title}</strong>
               </div>
@@ -69,6 +91,12 @@ export default function App() {
           ))}
         </ul>
       </section>
+
+      {page > 0 && page < totalPages && (
+        <button disabled={loading} onClick={onLoadMore}>
+          {loading ? "Loading..." : `Load more (page ${page + 1} of ${totalPages})`}
+        </button>
+      )}
     </main>
   );
 }

@@ -135,13 +135,19 @@ class LastFMClient:
         for index, album in zip(indexes, album_results, strict=True):
             tracks[index]["album"] = album
 
-    async def get_top_tracks(self, user: str, limit: int = 25) -> list[dict[str, Any]]:
+    async def get_top_tracks(
+        self,
+        user: str,
+        limit: int = 50,
+        page: int = 1,
+    ) -> dict[str, Any]:
         params = {
             "method": "user.getTopTracks",
             "user": user,
             "api_key": self.api_key,
             "format": "json",
             "limit": str(limit),
+            "page": str(page),
         }
 
         try:
@@ -171,12 +177,18 @@ class LastFMClient:
                 raise LastFMError(f"Last.fm request rejected: {message}", status_code=400)
             raise LastFMError(f"Last.fm error: {message}", status_code=502)
 
-        toptracks = payload.get("toptracks", {}).get("track", [])
-        if isinstance(toptracks, dict):
-            toptracks = [toptracks]
+        toptracks_block = payload.get("toptracks", {})
+        attr = toptracks_block.get("@attr", {})
+        total_pages = int(attr.get("totalPages", 1))
+        total_tracks = int(attr.get("total", 0))
+        current_page = int(attr.get("page", page))
+
+        raw_tracks = toptracks_block.get("track", [])
+        if isinstance(raw_tracks, dict):
+            raw_tracks = [raw_tracks]
 
         normalized: list[dict[str, Any]] = []
-        for item in toptracks:
+        for item in raw_tracks:
             artist = item.get("artist", {}).get("name", "")
             name = item.get("name", "")
             album = item.get("album", {}).get("name", "")
@@ -196,4 +208,10 @@ class LastFMClient:
         async with httpx.AsyncClient(timeout=15.0) as client:
             await self._enrich_albums(client, normalized)
 
-        return normalized
+        return {
+            "tracks": normalized,
+            "page": current_page,
+            "total_pages": total_pages,
+            "total_tracks": total_tracks,
+            "per_page": limit,
+        }
