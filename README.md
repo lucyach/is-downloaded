@@ -21,10 +21,11 @@ Basic full-stack outline for checking whether your most played Last.fm tracks ar
 ```powershell
 cd backend
 python -m venv .venv
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 copy .env.example .env
-uvicorn app.main:app --reload --port 5173
+uvicorn app.main:app --reload --port 8000
 ```
 
 Or from root with npm script support:

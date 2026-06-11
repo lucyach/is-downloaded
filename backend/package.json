@@ -3,6 +3,6 @@
   "private": true,
   "version": "0.1.0",
   "scripts": {
-    "dev": "uvicorn app.main:app --reload --port 8000"
+    "dev": ".venv\\Scripts\\uvicorn.exe app.main:app --reload --port 8000"
   }
 }

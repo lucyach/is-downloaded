@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "scripts": {
-    "dev": "concurrently -n api,web -c yellow,cyan \"npm --prefix backend run dev\" \"npm --prefix frontend run dev\"",
+    "dev": "concurrently -n api,web -c yellow,cyan \"backend\\.venv\\Scripts\\uvicorn.exe app.main:app --port 8000 --app-dir backend\" \"npm --prefix frontend run dev\"",
     "dev:docker": "docker compose up --build"
   },
   "devDependencies": {

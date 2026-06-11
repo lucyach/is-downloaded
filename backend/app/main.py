@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query
@@ -11,7 +12,8 @@ from pydantic import BaseModel
 from app.services.lastfm_client import LastFMClient, LastFMError
 from app.services.metadata_matcher import TrackIndex
 
-load_dotenv()
+# Resolve .env relative to this file so it's found regardless of cwd.
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 LASTFM_API_KEY = os.getenv("LASTFM_API_KEY", "")
 LASTFM_BASE_URL = os.getenv("LASTFM_BASE_URL", "https://ws.audioscrobbler.com/2.0/")
@@ -84,7 +86,7 @@ async def get_top_tracks(
 
 @app.post("/api/check-track", response_model=TrackStatus)
 def check_track_downloaded(payload: TrackRequest) -> TrackStatus:
-    track_index.refresh_if_path_changed(MUSIC_LIBRARY_PATH)
+    track_index.refresh_if_stale(MUSIC_LIBRARY_PATH)
     matched_path = track_index.find_track(payload.artist, payload.title)
     return TrackStatus(
         artist=payload.artist,
@@ -111,7 +113,7 @@ async def check_top_tracks(
     except LastFMError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
-    track_index.refresh_if_path_changed(MUSIC_LIBRARY_PATH)
+    track_index.refresh_if_stale(MUSIC_LIBRARY_PATH)
 
     results: list[TrackStatus] = []
     for track in result["tracks"]:

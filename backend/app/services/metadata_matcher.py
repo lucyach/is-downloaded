@@ -68,6 +68,7 @@ class TrackIndex:
         self._raw_exact_map: dict[tuple[str, str], str] = {}
         self._library_path: str = ""
         self._is_ready = False
+        self._last_mtime: float = 0.0
 
     @property
     def is_ready(self) -> bool:
@@ -151,10 +152,29 @@ class TrackIndex:
             self._exact_map = exact_map
             self._raw_exact_map = raw_exact_map
             self._library_path = library_path
+            self._last_mtime = self._dir_mtime(library_path)
             self._is_ready = True
 
-    def refresh_if_path_changed(self, library_path: str) -> None:
+    @staticmethod
+    def _dir_mtime(library_path: str) -> float:
+        """Return the most recent mtime across all subdirectories (detects new files)."""
+        root = Path(library_path)
+        if not root.exists() or not root.is_dir():
+            return 0.0
+        latest: float = root.stat().st_mtime
+        for dirpath, dirnames, _ in os.walk(root):
+            try:
+                latest = max(latest, Path(dirpath).stat().st_mtime)
+            except OSError:
+                pass
+        return latest
+
+    def refresh_if_stale(self, library_path: str) -> None:
         if library_path != self._library_path or not self._is_ready:
+            self.build(library_path)
+            return
+        current_mtime = self._dir_mtime(library_path)
+        if current_mtime > self._last_mtime:
             self.build(library_path)
 
     def find_track(self, artist: str, title: str) -> str | None:
