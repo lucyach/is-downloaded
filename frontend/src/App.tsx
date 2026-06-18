@@ -5,22 +5,25 @@ import type { CheckedTrack } from "./types";
 const DISMISSED_KEY = "dismissed_tracks";
 const MY_USERNAME = "lucyacheson";
 
+type DismissReason = "have_it" | "dont_want";
+type DismissedEntry = CheckedTrack & { reason: DismissReason };
+
 function dismissKey(artist: string, title: string) {
   return `${artist.toLowerCase()}::${title.toLowerCase()}`;
 }
 
-function loadDismissed(): Map<string, CheckedTrack> {
+function loadDismissed(): Map<string, DismissedEntry> {
   try {
     const raw = localStorage.getItem(DISMISSED_KEY);
     if (!raw) return new Map();
-    const arr = JSON.parse(raw) as CheckedTrack[];
-    return new Map(arr.map((t) => [dismissKey(t.artist, t.title), t]));
+    const arr = JSON.parse(raw) as DismissedEntry[];
+    return new Map(arr.map((t) => [dismissKey(t.artist, t.title), { ...t, reason: t.reason ?? "have_it" }]));
   } catch {
     return new Map();
   }
 }
 
-function saveDismissed(map: Map<string, CheckedTrack>) {
+function saveDismissed(map: Map<string, DismissedEntry>) {
   localStorage.setItem(DISMISSED_KEY, JSON.stringify([...map.values()]));
 }
 
@@ -33,12 +36,12 @@ export default function App() {
   const [page, setPage] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
   const [totalTracks, setTotalTracks] = useState(0);
-  const [dismissed, setDismissed] = useState<Map<string, CheckedTrack>>(loadDismissed);
+  const [dismissed, setDismissed] = useState<Map<string, DismissedEntry>>(loadDismissed);
   const [showDismissed, setShowDismissed] = useState(false);
 
-  function dismiss(track: CheckedTrack) {
+  function dismiss(track: CheckedTrack, reason: DismissReason) {
     const next = new Map(dismissed);
-    next.set(dismissKey(track.artist, track.title), track);
+    next.set(dismissKey(track.artist, track.title), { ...track, reason });
     saveDismissed(next);
     setDismissed(next);
   }
@@ -94,96 +97,101 @@ export default function App() {
   const dismissedList = [...dismissed.values()];
 
   return (
-    <main className="page">
-      <label className="autofill-check">
-        <input
-          type="checkbox"
-          checked={user === MY_USERNAME}
-          onChange={(e) => handleAutofill(e.target.checked)}
-        />
-        Use my account ({MY_USERNAME})
-      </label>
-
-      <h1>Is Downloaded?</h1>
-      <p>Find which of your most-played Last.fm tracks are missing from your local library.</p>
-
-      <form onSubmit={onSubmit} className="controls">
-        <label>
-          Last.fm user
-          <input value={user} onChange={(e) => handleUserChange(e.target.value)} required />
-        </label>
-
-        <label>
-          Per page
+    <div className="layout">
+      <aside className="sidebar">
+        <label className="autofill-check">
           <input
-            type="number"
-            min={1}
-            max={1000}
-            value={limit}
-            onChange={(e) => setLimit(Number(e.target.value))}
+            type="checkbox"
+            checked={user === MY_USERNAME}
+            onChange={(e) => handleAutofill(e.target.checked)}
           />
+          Use my account (lucyacheson)
         </label>
 
-        <button disabled={loading} type="submit">
-          {loading ? "Checking..." : "Check tracks"}
-        </button>
-      </form>
+        <section className="dismissed-panel">
+          <h2>
+            Dismissed ({dismissedList.length}){" "}
+            <button className="btn-toggle" onClick={() => setShowDismissed((v) => !v)}>
+              {showDismissed ? "▲" : "▼"}
+            </button>
+          </h2>
+          {showDismissed && (
+            <ul className="results dismissed-results">
+              {dismissedList.length === 0 && <li className="empty-note">Nothing dismissed yet.</li>}
+              {dismissedList.map((track) => (
+                <li key={`dismissed-${track.artist}-${track.title}`}>
+                  <div className="dismissed-header">
+                    <strong>{track.title}</strong>
+                    <span className={`dismiss-reason-badge ${track.reason === "have_it" ? "badge-have-it" : "badge-skip"}`}>
+                      {track.reason === "have_it" ? "✓ have it" : "✕ skip"}
+                    </span>
+                  </div>
+                  <div className="meta">{track.artist}</div>
+                  <button className="btn-restore" onClick={() => undismiss(track)}>restore</button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </aside>
 
-      {error && <p className="error">{error}</p>}
+      <main className="main-content">
+        <h1>Is Downloaded?</h1>
+        <p>By Lucy Acheson 2026.</p>
 
-      {totalTracks > 0 && (
-        <p>
-          Showing page {page} of {totalPages} ({totalTracks.toLocaleString()} total scrobbled tracks) &mdash; {visibleTracks.length} missing shown
-        </p>
-      )}
+        <form onSubmit={onSubmit} className="controls">
+          <label>
+            Last.fm user
+            <input value={user} onChange={(e) => handleUserChange(e.target.value)} required />
+          </label>
 
-      <section>
-        <h2>Missing Tracks ({visibleTracks.length})</h2>
-        <ul className="results">
-          {visibleTracks.map((track) => (
-            <li key={`${track.artist}-${track.title}-${track.playcount}`} className="miss">
-              <button className="dismiss-x" onClick={() => dismiss(track)} title="Dismiss">&times;</button>
-              <div>
-                <strong>{track.title}</strong>
-              </div>
-              <div>Artist: {track.artist}</div>
-              <div>Album: {track.album || "Unknown album"}</div>
-              <div>Plays: {track.playcount}</div>
-            </li>
-          ))}
-        </ul>
-      </section>
+          <label>
+            Per page
+            <input
+              type="number"
+              min={1}
+              max={1000}
+              value={limit}
+              onChange={(e) => setLimit(Number(e.target.value))}
+            />
+          </label>
 
-      {page > 0 && page < totalPages && (
-        <button disabled={loading} onClick={onLoadMore}>
-          {loading ? "Loading..." : `Load more (page ${page + 1} of ${totalPages})`}
-        </button>
-      )}
-
-      <section>
-        <h2>
-          Dismissed ({dismissedList.length}){" "}
-          <button onClick={() => setShowDismissed((v) => !v)}>
-            {showDismissed ? "Hide" : "Show"}
+          <button disabled={loading} type="submit">
+            {loading ? "Checking..." : "Check tracks"}
           </button>
-        </h2>
-        {showDismissed && (
+        </form>
+
+        {error && <p className="error">{error}</p>}
+
+        {totalTracks > 0 && (
+          <p className="status-line">
+            Page {page} of {totalPages} &mdash; {totalTracks.toLocaleString()} total scrobbles &mdash; {visibleTracks.length} missing shown
+          </p>
+        )}
+
+        <section>
+          <h2>Missing Tracks ({visibleTracks.length})</h2>
           <ul className="results">
-            {dismissedList.length === 0 && <li>No dismissed tracks.</li>}
-            {dismissedList.map((track) => (
-              <li key={`dismissed-${track.artist}-${track.title}`} className="miss">
-                <div>
-                  <strong>{track.title}</strong>
+            {visibleTracks.map((track) => (
+              <li key={`${track.artist}-${track.title}-${track.playcount}`} className="miss">
+                <div><strong>{track.title}</strong></div>
+                <div className="meta">{track.artist} &mdash; {track.album || "Unknown album"}</div>
+                <div className="meta">Plays: {track.playcount}</div>
+                <div className="card-actions">
+                  <button className="btn-have-it" onClick={() => dismiss(track, "have_it")}>✓ Already Downloaded</button>
+                  <button className="btn-skip" onClick={() => dismiss(track, "dont_want")}>✕ Not Interested</button>
                 </div>
-                <div>Artist: {track.artist}</div>
-                <div>Album: {track.album || "Unknown album"}</div>
-                <div>Plays: {track.playcount}</div>
-                <button onClick={() => undismiss(track)}>Restore</button>
               </li>
             ))}
           </ul>
+        </section>
+
+        {page > 0 && page < totalPages && (
+          <button className="btn-load-more" disabled={loading} onClick={onLoadMore}>
+            {loading ? "Loading..." : `Load more (page ${page + 1} of ${totalPages})`}
+          </button>
         )}
-      </section>
-    </main>
+      </main>
+    </div>
   );
 }
