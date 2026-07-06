@@ -6,7 +6,7 @@ const DISMISSED_KEY = "dismissed_tracks";
 const MY_USERNAME = "lucyacheson";
 const SETTINGS_KEY = "hide_remasters";
 const LIVE_SETTINGS_KEY = "hide_live";
-const VERSION_SETTINGS_KEY = "hide_versions";
+const VERSION_FILTERS_KEY = "version_filters";
 const FEAT_SETTINGS_KEY = "hide_features";
 const PARTIAL_ARTIST_SETTINGS_KEY = "hide_partial_artist";
 
@@ -27,17 +27,60 @@ function isLiveVariant(title: string): boolean {
   return /\(live[^)]*\)|\[live[^\]]*\]|\blive\s+(at|in|from|version|recording|session)\b|\blive\s*$/i.test(title);
 }
 
-const VERSION_FILTER_HINTS = [
-  "Extended / Original / Radio Version, Mix, or Edit",
-  "Album / Single / Studio / Club / Demo Version, Mix, or Edit",
-  "Acoustic / Instrumental / Unplugged / Vocal / Dub Mix or Version",
-  "Deluxe / Special / Bonus / Rough / Promo Version, Mix, or Track",
-  "[Year] Version, Mix, or Edit (e.g. 1987 Mix, (2001 Edit))",
-  "(Version), (Mix), or (Edit) alone in parentheses",
-] as const;
+type VersionFilterKey = "extended" | "album" | "acoustic" | "deluxe" | "yearVersion" | "bareParens";
 
-function isVersionVariant(title: string): boolean {
-  return /\b(extended|original|radio|album|single|acoustic|alternate|alternative|demo|deluxe|club|full|long|short|studio|early|standard|special|official|unplugged|orchestral|piano|stripped|uncut|censored|clean|explicit|instrumental|electric|director|vocal|dub|dance|bonus|rough|promo|hidden|a\s*cappella|acapella)\s+(version|mix|edit|track)\b|\b(19|20)\d{2}\s+(version|mix|edit|track)\b|\((version|mix|edit|track)\)/i.test(title);
+const VERSION_SUB_FILTERS: ReadonlyArray<{
+  key: VersionFilterKey;
+  label: string;
+  test: (title: string) => boolean;
+}> = [
+  {
+    key: "extended",
+    label: "Extended / Original / Radio",
+    test: (t) => /\b(extended|original|radio)\s+(version|mix|edit|track)\b/i.test(t),
+  },
+  {
+    key: "album",
+    label: "Album / Single / Studio / Club / Demo",
+    test: (t) => /\b(album|single|studio|club|demo|alternate|alternative|early|standard|official|full|long|short)\s+(version|mix|edit|track)\b/i.test(t),
+  },
+  {
+    key: "acoustic",
+    label: "Acoustic / Instrumental / Vocal / Dub",
+    test: (t) => /\b(acoustic|unplugged|orchestral|piano|stripped|electric|instrumental|vocal|dub|dance|a\s*cappella|acapella)\s+(version|mix|edit|track)\b/i.test(t),
+  },
+  {
+    key: "deluxe",
+    label: "Deluxe / Special / Bonus / Promo",
+    test: (t) => /\b(deluxe|special|bonus|hidden|rough|promo|director|clean|explicit|uncut|censored)\s+(version|mix|edit|track)\b/i.test(t),
+  },
+  {
+    key: "yearVersion",
+    label: "[Year] Version, Mix, or Edit",
+    test: (t) => /\b(19|20)\d{2}\s+(version|mix|edit|track)\b/i.test(t),
+  },
+  {
+    key: "bareParens",
+    label: "(Version) / (Mix) / (Edit) in parentheses",
+    test: (t) => /\((version|mix|edit|track)\)/i.test(t),
+  },
+];
+
+const DEFAULT_VERSION_FILTERS: Record<VersionFilterKey, boolean> = {
+  extended: false, album: false, acoustic: false, deluxe: false, yearVersion: false, bareParens: false,
+};
+
+function loadVersionFilters(username: string): Record<VersionFilterKey, boolean> {
+  try {
+    const raw = localStorage.getItem(VERSION_FILTERS_KEY);
+    if (raw) return { ...DEFAULT_VERSION_FILTERS, ...(JSON.parse(raw) as Record<VersionFilterKey, boolean>) };
+  } catch {}
+  const on = username === MY_USERNAME;
+  return { extended: on, album: on, acoustic: on, deluxe: on, yearVersion: on, bareParens: on };
+}
+
+function saveVersionFilters(filters: Record<VersionFilterKey, boolean>) {
+  localStorage.setItem(VERSION_FILTERS_KEY, JSON.stringify(filters));
 }
 
 const FEAT_FILTER_HINTS = [
@@ -97,9 +140,10 @@ export default function App() {
     return saved !== null ? saved === "true" : false;
   });
   const [hideVersions, setHideVersions] = useState(() => {
-    const saved = localStorage.getItem(VERSION_SETTINGS_KEY);
+    const saved = localStorage.getItem(VERSION_FILTERS_KEY);
     return saved !== null ? saved === "true" : user === MY_USERNAME;
   });
+  const [versionFilters, setVersionFilters] = useState<Record<VersionFilterKey, boolean>>(() => loadVersionFilters(user));
   const [hideFeatures, setHideFeatures] = useState(() => {
     const saved = localStorage.getItem(FEAT_SETTINGS_KEY);
     return saved !== null ? saved === "true" : false;
@@ -135,7 +179,13 @@ export default function App() {
 
   function toggleHideVersions(value: boolean) {
     setHideVersions(value);
-    localStorage.setItem(VERSION_SETTINGS_KEY, String(value));
+    localStorage.setItem(VERSION_FILTERS_KEY, String(value));
+  }
+
+  function toggleVersionFilter(key: VersionFilterKey, value: boolean) {
+    const next = { ...versionFilters, [key]: value };
+    setVersionFilters(next);
+    saveVersionFilters(next);
   }
 
   function toggleHideFeatures(value: boolean) {
@@ -190,7 +240,7 @@ export default function App() {
     if (dismissed.has(dismissKey(t.artist, t.title))) return false;
     if (hideRemasters && isRemasterVariant(t.title)) return false;
     if (hideLive && isLiveVariant(t.title)) return false;
-    if (hideVersions && isVersionVariant(t.title)) return false;
+    if (VERSION_SUB_FILTERS.some((f) => versionFilters[f.key] && f.test(t.title))) return false;
     if (hideFeatures && isFeatureTrack(t.title)) return false;
     if (hidePartialArtist && t.artist_partial_match) return false;
     return true;
@@ -298,71 +348,79 @@ export default function App() {
         <section className="settings-section">
           <h2>Preferences</h2>
 
-          <label className="setting-row">
-            <input
-              type="checkbox"
-              checked={hideRemasters}
-              onChange={(e) => toggleHideRemasters(e.target.checked)}
-            />
-            Hide remaster variants
-          </label>
-          <p className="setting-desc">
-            When on, tracks labelled &ldquo;Remastered&rdquo; (any year) won&apos;t appear as missing.
-          </p>
+          <div className="setting-item">
+            <label className="setting-row">
+              <input
+                type="checkbox"
+                checked={hideRemasters}
+                onChange={(e) => toggleHideRemasters(e.target.checked)}
+              />
+              <span>Hide remaster variants</span>
+            </label>
+            <p className="setting-desc">
+              When on, tracks labelled &ldquo;Remastered&rdquo; (any year) won&apos;t appear as missing.
+            </p>
+          </div>
 
-          <label className="setting-row">
-            <input
-              type="checkbox"
-              checked={hideLive}
-              onChange={(e) => toggleHideLive(e.target.checked)}
-            />
-            Hide live variants
-          </label>
-          <ul className="filter-hints">
-            {LIVE_FILTER_HINTS.map((hint) => (
-              <li key={hint}>{hint}</li>
+          <div className="setting-item">
+            <label className="setting-row">
+              <input
+                type="checkbox"
+                checked={hideLive}
+                onChange={(e) => toggleHideLive(e.target.checked)}
+              />
+              <span>Hide live variants</span>
+            </label>
+            <ul className="filter-hints">
+              {LIVE_FILTER_HINTS.map((hint) => (
+                <li key={hint}>{hint}</li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="setting-item">
+            <div className="setting-subsection-title">Version Variants</div>
+            {VERSION_SUB_FILTERS.map(({ key, label }) => (
+              <label key={key} className="setting-row setting-row-sub">
+                <input
+                  type="checkbox"
+                  checked={versionFilters[key]}
+                  onChange={(e) => toggleVersionFilter(key, e.target.checked)}
+                />
+                <span>{label}</span>
+              </label>
             ))}
-          </ul>
+          </div>
 
-          <label className="setting-row">
-            <input
-              type="checkbox"
-              checked={hideVersions}
-              onChange={(e) => toggleHideVersions(e.target.checked)}
-            />
-            Hide version variants
-          </label>
-          <ul className="filter-hints">
-            {VERSION_FILTER_HINTS.map((hint) => (
-              <li key={hint}>{hint}</li>
-            ))}
-          </ul>
+          <div className="setting-item">
+            <label className="setting-row">
+              <input
+                type="checkbox"
+                checked={hideFeatures}
+                onChange={(e) => toggleHideFeatures(e.target.checked)}
+              />
+              <span>Hide featured artist tracks</span>
+            </label>
+            <ul className="filter-hints">
+              {FEAT_FILTER_HINTS.map((hint) => (
+                <li key={hint}>{hint}</li>
+              ))}
+            </ul>
+          </div>
 
-          <label className="setting-row">
-            <input
-              type="checkbox"
-              checked={hideFeatures}
-              onChange={(e) => toggleHideFeatures(e.target.checked)}
-            />
-            Hide featured artist tracks
-          </label>
-          <ul className="filter-hints">
-            {FEAT_FILTER_HINTS.map((hint) => (
-              <li key={hint}>{hint}</li>
-            ))}
-          </ul>
-
-          <label className="setting-row">
-            <input
-              type="checkbox"
-              checked={hidePartialArtist}
-              onChange={(e) => toggleHidePartialArtist(e.target.checked)}
-            />
-            Hide partial artist matches
-          </label>
-          <p className="setting-desc">
-            Hides tracks where one artist name contains the other (e.g. &ldquo;The Wailers&rdquo; vs &ldquo;Bob Marley &amp; The Wailers&rdquo;, or &ldquo;Louis Cole&rdquo; vs a multi-artist credit).
-          </p>
+          <div className="setting-item">
+            <label className="setting-row">
+              <input
+                type="checkbox"
+                checked={hidePartialArtist}
+                onChange={(e) => toggleHidePartialArtist(e.target.checked)}
+              />
+              <span>Hide partial artist matches</span>
+            </label>
+            <p className="setting-desc">
+              Hides tracks where one artist name contains the other (e.g. &ldquo;The Wailers&rdquo; vs &ldquo;Bob Marley &amp; The Wailers&rdquo;, or &ldquo;Louis Cole&rdquo; vs a multi-artist credit).
+            </p>
+          </div>
         </section>
       </aside>
     </div>
