@@ -4,6 +4,39 @@ import type { CheckedTrack } from "./types";
 
 const DISMISSED_KEY = "dismissed_tracks";
 const MY_USERNAME = "lucyacheson";
+const SETTINGS_KEY = "hide_remasters";
+const LIVE_SETTINGS_KEY = "hide_live";
+const VERSION_SETTINGS_KEY = "hide_versions";
+
+function isRemasterVariant(title: string): boolean {
+  // Matches any occurrence of "remaster" or "remastered" regardless of year
+  return /\bremaster(ed)?\b/i.test(title);
+}
+
+const LIVE_FILTER_HINTS = [
+  "(Live), (Live at …), (Live in Tokyo 1985)",
+  "[Live], [Live at Wembley]",
+  "Live at / Live in / Live from [place]",
+  "Live Version, Live Recording, Live Session",
+  "Titles ending with the word Live (e.g. Song – Live)",
+] as const;
+
+function isLiveVariant(title: string): boolean {
+  return /\(live[^)]*\)|\[live[^\]]*\]|\blive\s+(at|in|from|version|recording|session)\b|\blive\s*$/i.test(title);
+}
+
+const VERSION_FILTER_HINTS = [
+  "Extended / Original / Radio Version, Mix, or Edit",
+  "Album / Single / Studio / Club / Demo Version, Mix, or Edit",
+  "Acoustic / Instrumental / Unplugged / Vocal / Dub Mix or Version",
+  "Deluxe / Special / Bonus / Rough / Promo Version or Mix",
+  "[Year] Version, Mix, or Edit (e.g. 1987 Mix, (2001 Edit))",
+  "(Version), (Mix), or (Edit) alone in parentheses",
+] as const;
+
+function isVersionVariant(title: string): boolean {
+  return /\b(extended|original|radio|album|single|acoustic|alternate|alternative|demo|deluxe|club|full|long|short|studio|early|standard|special|official|unplugged|orchestral|piano|stripped|uncut|censored|clean|explicit|instrumental|electric|director|vocal|dub|dance|bonus|rough|promo|a\s*cappella|acapella)\s+(version|mix|edit)\b|\b(19|20)\d{2}\s+(version|mix|edit)\b|\((version|mix|edit)\)/i.test(title);
+}
 
 type DismissReason = "have_it" | "dont_want";
 type DismissedEntry = CheckedTrack & { reason: DismissReason };
@@ -27,6 +60,12 @@ function saveDismissed(map: Map<string, DismissedEntry>) {
   localStorage.setItem(DISMISSED_KEY, JSON.stringify([...map.values()]));
 }
 
+function loadHideRemasters(username: string): boolean {
+  const saved = localStorage.getItem(SETTINGS_KEY);
+  if (saved !== null) return saved === "true";
+  return username === MY_USERNAME;
+}
+
 export default function App() {
   const [user, setUser] = useState(() => localStorage.getItem("saved_user") ?? "");
   const [limit, setLimit] = useState(50);
@@ -38,6 +77,15 @@ export default function App() {
   const [totalTracks, setTotalTracks] = useState(0);
   const [dismissed, setDismissed] = useState<Map<string, DismissedEntry>>(loadDismissed);
   const [showDismissed, setShowDismissed] = useState(false);
+  const [hideRemasters, setHideRemasters] = useState(() => loadHideRemasters(user));
+  const [hideLive, setHideLive] = useState(() => {
+    const saved = localStorage.getItem(LIVE_SETTINGS_KEY);
+    return saved !== null ? saved === "true" : false;
+  });
+  const [hideVersions, setHideVersions] = useState(() => {
+    const saved = localStorage.getItem(VERSION_SETTINGS_KEY);
+    return saved !== null ? saved === "true" : user === MY_USERNAME;
+  });
 
   function dismiss(track: CheckedTrack, reason: DismissReason) {
     const next = new Map(dismissed);
@@ -51,6 +99,21 @@ export default function App() {
     next.delete(dismissKey(track.artist, track.title));
     saveDismissed(next);
     setDismissed(next);
+  }
+
+  function toggleHideRemasters(value: boolean) {
+    setHideRemasters(value);
+    localStorage.setItem(SETTINGS_KEY, String(value));
+  }
+
+  function toggleHideLive(value: boolean) {
+    setHideLive(value);
+    localStorage.setItem(LIVE_SETTINGS_KEY, String(value));
+  }
+
+  function toggleHideVersions(value: boolean) {
+    setHideVersions(value);
+    localStorage.setItem(VERSION_SETTINGS_KEY, String(value));
   }
 
   async function loadPage(targetPage: number, append: boolean) {
@@ -91,9 +154,13 @@ export default function App() {
     await loadPage(page + 1, true);
   }
 
-  const visibleTracks = tracks.filter(
-    (t) => !dismissed.has(dismissKey(t.artist, t.title)),
-  );
+  const visibleTracks = tracks.filter((t) => {
+    if (dismissed.has(dismissKey(t.artist, t.title))) return false;
+    if (hideRemasters && isRemasterVariant(t.title)) return false;
+    if (hideLive && isLiveVariant(t.title)) return false;
+    if (hideVersions && isVersionVariant(t.title)) return false;
+    return true;
+  });
   const dismissedList = [...dismissed.values()];
 
   return (
@@ -192,6 +259,52 @@ export default function App() {
           </button>
         )}
       </main>
+
+      <aside className="settings-sidebar">
+        <section className="settings-section">
+          <h2>Preferences</h2>
+
+          <label className="setting-row">
+            <input
+              type="checkbox"
+              checked={hideRemasters}
+              onChange={(e) => toggleHideRemasters(e.target.checked)}
+            />
+            Hide remaster variants
+          </label>
+          <p className="setting-desc">
+            When on, tracks labelled &ldquo;Remastered&rdquo; (any year) won&apos;t appear as missing.
+          </p>
+
+          <label className="setting-row">
+            <input
+              type="checkbox"
+              checked={hideLive}
+              onChange={(e) => toggleHideLive(e.target.checked)}
+            />
+            Hide live variants
+          </label>
+          <ul className="filter-hints">
+            {LIVE_FILTER_HINTS.map((hint) => (
+              <li key={hint}>{hint}</li>
+            ))}
+          </ul>
+
+          <label className="setting-row">
+            <input
+              type="checkbox"
+              checked={hideVersions}
+              onChange={(e) => toggleHideVersions(e.target.checked)}
+            />
+            Hide version variants
+          </label>
+          <ul className="filter-hints">
+            {VERSION_FILTER_HINTS.map((hint) => (
+              <li key={hint}>{hint}</li>
+            ))}
+          </ul>
+        </section>
+      </aside>
     </div>
   );
 }

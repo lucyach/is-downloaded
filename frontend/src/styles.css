@@ -17,9 +17,9 @@ body {
 
 .layout {
   display: grid;
-  grid-template-columns: 340px 1fr;
+  grid-template-columns: 340px 1fr 260px;
   min-height: 100vh;
-  align-items: start;
+  align-items: stretch;
 }
 
 .sidebar {
@@ -346,4 +346,53 @@ button:disabled {
   font-size: 11px;
   color: #4a5060;
   padding: 4px 0;
+}
+
+/* ── Right settings sidebar ── */
+
+.settings-sidebar {
+  background: #1e2128;
+  border-left: 1px solid #353a45;
+  padding: 0.75rem 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.settings-section h2 {
+  margin-top: 0.5rem;
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: #8a90a0;
+  padding: 4px 2px;
+  cursor: pointer;
+}
+
+.setting-row input[type="checkbox"] {
+  width: auto;
+  min-width: unset;
+  padding: 0;
+  border: 1px solid #555;
+}
+
+.setting-desc {
+  font-size: 12px;
+  color: #5a6070;
+  margin: 0.1rem 0 0;
+  padding-left: 22px;
+  line-height: 1.5;
+}
+
+.filter-hints {
+  list-style: disc;
+  margin: 0.2rem 0 0.5rem;
+  padding-left: 34px;
+  font-size: 11px;
+  color: #4a5060;
+  line-height: 1.8;
 }
