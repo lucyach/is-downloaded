@@ -7,6 +7,7 @@ const MY_USERNAME = "lucyacheson";
 const SETTINGS_KEY = "hide_remasters";
 const LIVE_SETTINGS_KEY = "hide_live";
 const VERSION_SETTINGS_KEY = "hide_versions";
+const FEAT_SETTINGS_KEY = "hide_features";
 
 function isRemasterVariant(title: string): boolean {
   // Matches any occurrence of "remaster" or "remastered" regardless of year
@@ -36,6 +37,18 @@ const VERSION_FILTER_HINTS = [
 
 function isVersionVariant(title: string): boolean {
   return /\b(extended|original|radio|album|single|acoustic|alternate|alternative|demo|deluxe|club|full|long|short|studio|early|standard|special|official|unplugged|orchestral|piano|stripped|uncut|censored|clean|explicit|instrumental|electric|director|vocal|dub|dance|bonus|rough|promo|a\s*cappella|acapella)\s+(version|mix|edit)\b|\b(19|20)\d{2}\s+(version|mix|edit)\b|\((version|mix|edit)\)/i.test(title);
+}
+
+const FEAT_FILTER_HINTS = [
+  "(feat. Artist Name), feat. Artist Name",
+  "(ft. Artist Name), ft. Artist Name",
+  "(featuring Artist Name), featuring Artist Name",
+  "feat / ft without a period",
+  "(with Artist Name), [with Artist Name]",
+] as const;
+
+function isFeatureTrack(title: string): boolean {
+  return /\bfeat[.\s]|\bft[.\s]|\bfeaturing\b|\(with\b|\[with\b/i.test(title);
 }
 
 type DismissReason = "have_it" | "dont_want";
@@ -86,6 +99,10 @@ export default function App() {
     const saved = localStorage.getItem(VERSION_SETTINGS_KEY);
     return saved !== null ? saved === "true" : user === MY_USERNAME;
   });
+  const [hideFeatures, setHideFeatures] = useState(() => {
+    const saved = localStorage.getItem(FEAT_SETTINGS_KEY);
+    return saved !== null ? saved === "true" : false;
+  });
 
   function dismiss(track: CheckedTrack, reason: DismissReason) {
     const next = new Map(dismissed);
@@ -114,6 +131,11 @@ export default function App() {
   function toggleHideVersions(value: boolean) {
     setHideVersions(value);
     localStorage.setItem(VERSION_SETTINGS_KEY, String(value));
+  }
+
+  function toggleHideFeatures(value: boolean) {
+    setHideFeatures(value);
+    localStorage.setItem(FEAT_SETTINGS_KEY, String(value));
   }
 
   async function loadPage(targetPage: number, append: boolean) {
@@ -159,6 +181,7 @@ export default function App() {
     if (hideRemasters && isRemasterVariant(t.title)) return false;
     if (hideLive && isLiveVariant(t.title)) return false;
     if (hideVersions && isVersionVariant(t.title)) return false;
+    if (hideFeatures && isFeatureTrack(t.title)) return false;
     return true;
   });
   const dismissedList = [...dismissed.values()];
@@ -300,6 +323,20 @@ export default function App() {
           </label>
           <ul className="filter-hints">
             {VERSION_FILTER_HINTS.map((hint) => (
+              <li key={hint}>{hint}</li>
+            ))}
+          </ul>
+
+          <label className="setting-row">
+            <input
+              type="checkbox"
+              checked={hideFeatures}
+              onChange={(e) => toggleHideFeatures(e.target.checked)}
+            />
+            Hide featured artist tracks
+          </label>
+          <ul className="filter-hints">
+            {FEAT_FILTER_HINTS.map((hint) => (
               <li key={hint}>{hint}</li>
             ))}
           </ul>
