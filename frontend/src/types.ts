@@ -5,6 +5,7 @@ export type CheckedTrack = {
   playcount: number;
   downloaded: boolean;
   matched_path: string | null;
+  artist_partial_match: boolean;
 };
 
 export type CheckTopTracksResponse = {

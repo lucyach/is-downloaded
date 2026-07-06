@@ -55,6 +55,7 @@ class TrackStatus(BaseModel):
     playcount: int | None = None
     downloaded: bool
     matched_path: str | None = None
+    artist_partial_match: bool = False
 
 
 @app.get("/health")
@@ -122,6 +123,10 @@ async def check_top_tracks(
         album = track.get("album", "")
         playcount = int(track.get("playcount", 0))
         matched_path = track_index.find_track(artist, title)
+        artist_partial_match = False
+        if matched_path is None:
+            if track_index.find_track_partial_artist(artist, title) is not None:
+                artist_partial_match = True
         downloaded = matched_path is not None
 
         if only_missing and downloaded:
@@ -135,6 +140,7 @@ async def check_top_tracks(
                 playcount=playcount,
                 downloaded=downloaded,
                 matched_path=matched_path,
+                artist_partial_match=artist_partial_match,
             )
         )
 

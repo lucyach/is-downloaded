@@ -13,7 +13,11 @@ from mutagen.easyid3 import EasyID3
 def _normalize(text: str) -> str:
     text = text.strip().lower().replace("&", " and ")
     text = re.sub(r"[\[\]{}()]+", " ", text)
-    text = re.sub(r"[^a-z0-9\s]", " ", text)
+    ascii_only = re.sub(r"[^a-z0-9\s]", " ", text)
+    ascii_only = " ".join(ascii_only.split())
+    if ascii_only:
+        return ascii_only
+    # Fallback: title is entirely non-ASCII symbols (e.g. "ฅ^•ﻌ•^ฅ") — preserve raw form.
     return " ".join(text.split())
 
 
@@ -146,6 +150,16 @@ class TrackIndex:
                 if raw_artist_key and raw_title_key:
                     raw_exact_map.setdefault((raw_artist_key, raw_title_key), indexed.path)
 
+                # For & or , separated credits, also index each component so that
+                # a query for just one artist (e.g. "Mura Masa") finds the track.
+                raw_parts = [p.strip() for p in re.split(r"[&,]", raw_artist) if p.strip()]
+                if len(raw_parts) > 1:
+                    for part in raw_parts:
+                        part_key = _canonical_artist(part) or _normalize(part)
+                        if part_key and part_key != artist_key:
+                            by_artist.setdefault(part_key, []).append(indexed)
+                            exact_map.setdefault((part_key, title_key), indexed.path)
+
         with self._lock:
             self._tracks = tracks
             self._by_artist = by_artist
@@ -200,6 +214,24 @@ class TrackIndex:
                 return exact
 
             artist_candidates = list(self._by_artist.get(artist_key, []))
+
+            # For & or , joined query artists (e.g. "Mura Masa & yeule"), also
+            # check each component so the single-artist local file is found.
+            query_parts = [p.strip() for p in re.split(r"[&,]", artist) if p.strip()]
+            if len(query_parts) > 1:
+                seen_ids = {id(c) for c in artist_candidates}
+                for part in query_parts:
+                    part_key = _canonical_artist(part)
+                    if not part_key or part_key == artist_key:
+                        continue
+                    comp_exact = self._exact_map.get((part_key, title_key))
+                    if comp_exact:
+                        return comp_exact
+                    for c in self._by_artist.get(part_key, []):
+                        if id(c) not in seen_ids:
+                            artist_candidates.append(c)
+                            seen_ids.add(id(c))
+
             all_tracks = list(self._tracks)
 
         title_variants = {title_key, raw_title_key}
@@ -255,3 +287,51 @@ class TrackIndex:
             return global_best_path
 
         return None
+
+    def find_track_partial_artist(self, artist: str, title: str) -> str | None:
+        """Fallback for tracks where artist credits differ between Last.fm and local files.
+
+        Matches when one artist's meaningful name tokens are a subset of the other's
+        (e.g. 'The Wailers' vs 'Bob Marley & The Wailers', or 'Louis Cole' vs
+        'Louis Cole, Other Artist').  Still requires a strong title similarity.
+        """
+        raw_artist_key = _normalize(artist)
+        raw_title_key = _normalize(title)
+        artist_key = _canonical_artist(artist)
+        title_key = _canonical_title(title)
+        if not artist_key:
+            artist_key = raw_artist_key
+        if not title_key:
+            title_key = raw_title_key
+        if not artist_key or not title_key:
+            return None
+
+        # Tokens longer than 3 chars to skip noise words like 'the', 'and'.
+        query_tokens = {t for t in artist_key.split() if len(t) > 3}
+        if not query_tokens:
+            return None
+
+        title_variants = {v for v in (title_key, raw_title_key) if v}
+
+        with self._lock:
+            all_tracks = list(self._tracks)
+
+        best_path: str | None = None
+        best_score = 0.0
+
+        for candidate in all_tracks:
+            candidate_tokens = {t for t in candidate.artist_key.split() if len(t) > 3}
+            if not candidate_tokens:
+                continue
+            # One artist's meaningful tokens must be a subset of the other's.
+            if not (query_tokens <= candidate_tokens or candidate_tokens <= query_tokens):
+                continue
+            score = max(
+                SequenceMatcher(a=variant, b=candidate.title_key).ratio()
+                for variant in title_variants
+            )
+            if score > best_score:
+                best_score = score
+                best_path = candidate.path
+
+        return best_path if best_score >= 0.87 else None

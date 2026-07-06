@@ -8,6 +8,7 @@ const SETTINGS_KEY = "hide_remasters";
 const LIVE_SETTINGS_KEY = "hide_live";
 const VERSION_SETTINGS_KEY = "hide_versions";
 const FEAT_SETTINGS_KEY = "hide_features";
+const PARTIAL_ARTIST_SETTINGS_KEY = "hide_partial_artist";
 
 function isRemasterVariant(title: string): boolean {
   // Matches any occurrence of "remaster" or "remastered" regardless of year
@@ -30,13 +31,13 @@ const VERSION_FILTER_HINTS = [
   "Extended / Original / Radio Version, Mix, or Edit",
   "Album / Single / Studio / Club / Demo Version, Mix, or Edit",
   "Acoustic / Instrumental / Unplugged / Vocal / Dub Mix or Version",
-  "Deluxe / Special / Bonus / Rough / Promo Version or Mix",
+  "Deluxe / Special / Bonus / Rough / Promo Version, Mix, or Track",
   "[Year] Version, Mix, or Edit (e.g. 1987 Mix, (2001 Edit))",
   "(Version), (Mix), or (Edit) alone in parentheses",
 ] as const;
 
 function isVersionVariant(title: string): boolean {
-  return /\b(extended|original|radio|album|single|acoustic|alternate|alternative|demo|deluxe|club|full|long|short|studio|early|standard|special|official|unplugged|orchestral|piano|stripped|uncut|censored|clean|explicit|instrumental|electric|director|vocal|dub|dance|bonus|rough|promo|a\s*cappella|acapella)\s+(version|mix|edit)\b|\b(19|20)\d{2}\s+(version|mix|edit)\b|\((version|mix|edit)\)/i.test(title);
+  return /\b(extended|original|radio|album|single|acoustic|alternate|alternative|demo|deluxe|club|full|long|short|studio|early|standard|special|official|unplugged|orchestral|piano|stripped|uncut|censored|clean|explicit|instrumental|electric|director|vocal|dub|dance|bonus|rough|promo|hidden|a\s*cappella|acapella)\s+(version|mix|edit|track)\b|\b(19|20)\d{2}\s+(version|mix|edit|track)\b|\((version|mix|edit|track)\)/i.test(title);
 }
 
 const FEAT_FILTER_HINTS = [
@@ -103,6 +104,10 @@ export default function App() {
     const saved = localStorage.getItem(FEAT_SETTINGS_KEY);
     return saved !== null ? saved === "true" : false;
   });
+  const [hidePartialArtist, setHidePartialArtist] = useState(() => {
+    const saved = localStorage.getItem(PARTIAL_ARTIST_SETTINGS_KEY);
+    return saved !== null ? saved === "true" : false;
+  });
 
   function dismiss(track: CheckedTrack, reason: DismissReason) {
     const next = new Map(dismissed);
@@ -136,6 +141,11 @@ export default function App() {
   function toggleHideFeatures(value: boolean) {
     setHideFeatures(value);
     localStorage.setItem(FEAT_SETTINGS_KEY, String(value));
+  }
+
+  function toggleHidePartialArtist(value: boolean) {
+    setHidePartialArtist(value);
+    localStorage.setItem(PARTIAL_ARTIST_SETTINGS_KEY, String(value));
   }
 
   async function loadPage(targetPage: number, append: boolean) {
@@ -182,6 +192,7 @@ export default function App() {
     if (hideLive && isLiveVariant(t.title)) return false;
     if (hideVersions && isVersionVariant(t.title)) return false;
     if (hideFeatures && isFeatureTrack(t.title)) return false;
+    if (hidePartialArtist && t.artist_partial_match) return false;
     return true;
   });
   const dismissedList = [...dismissed.values()];
@@ -340,6 +351,18 @@ export default function App() {
               <li key={hint}>{hint}</li>
             ))}
           </ul>
+
+          <label className="setting-row">
+            <input
+              type="checkbox"
+              checked={hidePartialArtist}
+              onChange={(e) => toggleHidePartialArtist(e.target.checked)}
+            />
+            Hide partial artist matches
+          </label>
+          <p className="setting-desc">
+            Hides tracks where one artist name contains the other (e.g. &ldquo;The Wailers&rdquo; vs &ldquo;Bob Marley &amp; The Wailers&rdquo;, or &ldquo;Louis Cole&rdquo; vs a multi-artist credit).
+          </p>
         </section>
       </aside>
     </div>

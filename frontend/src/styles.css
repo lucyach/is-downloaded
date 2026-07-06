@@ -17,7 +17,7 @@ body {
 
 .layout {
   display: grid;
-  grid-template-columns: 340px 1fr 360px;
+  grid-template-columns: 340px 1fr 370px;
   min-height: 100vh;
   align-items: stretch;
 }
