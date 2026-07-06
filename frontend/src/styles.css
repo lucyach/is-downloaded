@@ -285,9 +285,6 @@ button:disabled {
   color: #a0a8b8;
 }
 
-.dismissed-results {
-}
-
 .dismissed-results li {
   position: static;
   padding: 7px 8px;

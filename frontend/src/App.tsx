@@ -56,8 +56,8 @@ const VERSION_SUB_FILTERS: ReadonlyArray<{
   },
   {
     key: "yearVersion",
-    label: "[Year] Version, Mix, or Edit",
-    test: (t) => /\b(19|20)\d{2}\s+(version|mix|edit|track)\b/i.test(t),
+    label: "[Year] Version, Mix, Edit, or Recording",
+    test: (t) => /\b(19|20)\d{2}\s+(version|mix|edit|track|recording)\b|\brecording\s+(19|20)\d{2}\b/i.test(t),
   },
   {
     key: "bareParens",
@@ -70,13 +70,12 @@ const DEFAULT_VERSION_FILTERS: Record<VersionFilterKey, boolean> = {
   extended: false, album: false, acoustic: false, deluxe: false, yearVersion: false, bareParens: false,
 };
 
-function loadVersionFilters(username: string): Record<VersionFilterKey, boolean> {
+function loadVersionFilters(): Record<VersionFilterKey, boolean> {
   try {
     const raw = localStorage.getItem(VERSION_FILTERS_KEY);
     if (raw) return { ...DEFAULT_VERSION_FILTERS, ...(JSON.parse(raw) as Record<VersionFilterKey, boolean>) };
   } catch {}
-  const on = username === MY_USERNAME;
-  return { extended: on, album: on, acoustic: on, deluxe: on, yearVersion: on, bareParens: on };
+  return { ...DEFAULT_VERSION_FILTERS };
 }
 
 function saveVersionFilters(filters: Record<VersionFilterKey, boolean>) {
@@ -102,29 +101,38 @@ function dismissKey(artist: string, title: string) {
   return `${artist.toLowerCase()}::${title.toLowerCase()}`;
 }
 
-function loadDismissed(): Map<string, DismissedEntry> {
+function loadDismissed(username: string): Map<string, DismissedEntry> {
+  if (!username) return new Map();
+  const userKey = `${DISMISSED_KEY}:${username}`;
   try {
-    const raw = localStorage.getItem(DISMISSED_KEY);
-    if (!raw) return new Map();
-    const arr = JSON.parse(raw) as DismissedEntry[];
-    return new Map(arr.map((t) => [dismissKey(t.artist, t.title), { ...t, reason: t.reason ?? "have_it" }]));
-  } catch {
-    return new Map();
-  }
+    const raw = localStorage.getItem(userKey);
+    if (raw) {
+      const arr = JSON.parse(raw) as DismissedEntry[];
+      return new Map(arr.map((t) => [dismissKey(t.artist, t.title), { ...t, reason: t.reason ?? "have_it" }]));
+    }
+    // Migrate data from the old unscoped key on first load for this user.
+    const legacy = localStorage.getItem(DISMISSED_KEY);
+    if (legacy) {
+      localStorage.setItem(userKey, legacy);
+      localStorage.removeItem(DISMISSED_KEY);
+      const arr = JSON.parse(legacy) as DismissedEntry[];
+      return new Map(arr.map((t) => [dismissKey(t.artist, t.title), { ...t, reason: t.reason ?? "have_it" }]));
+    }
+  } catch {}
+  return new Map();
 }
 
-function saveDismissed(map: Map<string, DismissedEntry>) {
-  localStorage.setItem(DISMISSED_KEY, JSON.stringify([...map.values()]));
+function saveDismissed(username: string, map: Map<string, DismissedEntry>) {
+  if (!username) return;
+  localStorage.setItem(`${DISMISSED_KEY}:${username}`, JSON.stringify([...map.values()]));
 }
 
-function loadHideRemasters(username: string): boolean {
-  const saved = localStorage.getItem(SETTINGS_KEY);
-  if (saved !== null) return saved === "true";
-  return username === MY_USERNAME;
+function loadHideRemasters(): boolean {
+  return localStorage.getItem(SETTINGS_KEY) === "true";
 }
 
 export default function App() {
-  const [user, setUser] = useState(() => localStorage.getItem("saved_user") ?? "");
+  const [user, setUser] = useState("");
   const [limit, setLimit] = useState(50);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -132,38 +140,25 @@ export default function App() {
   const [page, setPage] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
   const [totalTracks, setTotalTracks] = useState(0);
-  const [dismissed, setDismissed] = useState<Map<string, DismissedEntry>>(loadDismissed);
+  const [dismissed, setDismissed] = useState<Map<string, DismissedEntry>>(new Map());
   const [showDismissed, setShowDismissed] = useState(false);
-  const [hideRemasters, setHideRemasters] = useState(() => loadHideRemasters(user));
-  const [hideLive, setHideLive] = useState(() => {
-    const saved = localStorage.getItem(LIVE_SETTINGS_KEY);
-    return saved !== null ? saved === "true" : false;
-  });
-  const [hideVersions, setHideVersions] = useState(() => {
-    const saved = localStorage.getItem(VERSION_FILTERS_KEY);
-    return saved !== null ? saved === "true" : user === MY_USERNAME;
-  });
-  const [versionFilters, setVersionFilters] = useState<Record<VersionFilterKey, boolean>>(() => loadVersionFilters(user));
-  const [hideFeatures, setHideFeatures] = useState(() => {
-    const saved = localStorage.getItem(FEAT_SETTINGS_KEY);
-    return saved !== null ? saved === "true" : false;
-  });
-  const [hidePartialArtist, setHidePartialArtist] = useState(() => {
-    const saved = localStorage.getItem(PARTIAL_ARTIST_SETTINGS_KEY);
-    return saved !== null ? saved === "true" : false;
-  });
+  const [hideRemasters, setHideRemasters] = useState(() => loadHideRemasters());
+  const [hideLive, setHideLive] = useState(() => localStorage.getItem(LIVE_SETTINGS_KEY) === "true");
+  const [versionFilters, setVersionFilters] = useState<Record<VersionFilterKey, boolean>>(() => loadVersionFilters());
+  const [hideFeatures, setHideFeatures] = useState(() => localStorage.getItem(FEAT_SETTINGS_KEY) === "true");
+  const [hidePartialArtist, setHidePartialArtist] = useState(() => localStorage.getItem(PARTIAL_ARTIST_SETTINGS_KEY) === "true");
 
   function dismiss(track: CheckedTrack, reason: DismissReason) {
     const next = new Map(dismissed);
     next.set(dismissKey(track.artist, track.title), { ...track, reason });
-    saveDismissed(next);
+    saveDismissed(user, next);
     setDismissed(next);
   }
 
   function undismiss(track: CheckedTrack) {
     const next = new Map(dismissed);
     next.delete(dismissKey(track.artist, track.title));
-    saveDismissed(next);
+    saveDismissed(user, next);
     setDismissed(next);
   }
 
@@ -175,11 +170,6 @@ export default function App() {
   function toggleHideLive(value: boolean) {
     setHideLive(value);
     localStorage.setItem(LIVE_SETTINGS_KEY, String(value));
-  }
-
-  function toggleHideVersions(value: boolean) {
-    setHideVersions(value);
-    localStorage.setItem(VERSION_FILTERS_KEY, String(value));
   }
 
   function toggleVersionFilter(key: VersionFilterKey, value: boolean) {
@@ -218,10 +208,18 @@ export default function App() {
   function handleUserChange(value: string) {
     setUser(value);
     localStorage.setItem("saved_user", value);
+    setDismissed(loadDismissed(value));
   }
 
   function handleAutofill(checked: boolean) {
-    if (checked) handleUserChange(MY_USERNAME);
+    if (!checked) return;
+    handleUserChange(MY_USERNAME);
+    const allOn: Record<VersionFilterKey, boolean> = { extended: true, album: true, acoustic: true, deluxe: true, yearVersion: true, bareParens: true };
+    setHideRemasters(true);       localStorage.setItem(SETTINGS_KEY, "true");
+    setHideLive(false);           localStorage.setItem(LIVE_SETTINGS_KEY, "false");
+    setVersionFilters(allOn);     saveVersionFilters(allOn);
+    setHideFeatures(true);        localStorage.setItem(FEAT_SETTINGS_KEY, "true");
+    setHidePartialArtist(true);   localStorage.setItem(PARTIAL_ARTIST_SETTINGS_KEY, "true");
   }
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
